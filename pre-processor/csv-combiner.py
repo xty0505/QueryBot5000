@@ -12,7 +12,7 @@ import re
 import argparse
 from multiprocessing import Process
 
-csv.field_size_limit(sys.maxsize)
+csv.field_size_limit(500 * 1024 * 1024)
 
 STATEMENTS = ['select', 'SELECT', 'INSERT', 'insert', 'UPDATE', 'update', 'delete', 'DELETE']
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -32,15 +32,16 @@ def MakeCSVFiles(workload_dict, min_timestamp, max_timestamp, output_dir):
 
     template_count = 0
     for template in workload_dict:
+        template_param = workload_dict[template].pop('param')
         template_timestamps = workload_dict[
             template]  # time stamps for ith cluster
         num_queries_for_template = sum(template_timestamps.values())
 
         # write to csv file
         with open(output_dir + 'template' + str(template_count) +
-                  ".csv", 'w') as csvfile:
+                  ".csv", 'w', newline='') as csvfile:
             template_writer = csv.writer(csvfile, dialect='excel')
-            template_writer.writerow([num_queries_for_template, template])
+            template_writer.writerow([num_queries_for_template, template, ','.join(template_param)])
             for entry in sorted(template_timestamps):
                 template_writer.writerow([entry, template_timestamps[entry]])
         csvfile.close()
@@ -48,7 +49,7 @@ def MakeCSVFiles(workload_dict, min_timestamp, max_timestamp, output_dir):
     
     print("Template count: " + str(template_count))
 
-def AddEntry(template, reader, min_timestamp, max_timestamp, templated_workload):
+def AddEntry(template, param, reader, min_timestamp, max_timestamp, templated_workload):
 
     # Finer process the template a bit to reduce the total template numbers
     template = re.sub(r"&&&", r"#", template)
@@ -85,9 +86,25 @@ def AddEntry(template, reader, min_timestamp, max_timestamp, templated_workload)
 
         min_timestamp = min(min_timestamp, time_stamp)
         max_timestamp = max(max_timestamp, time_stamp)
+    GetParams(templated_workload[template], param)
 
     return (templated_workload, min_timestamp, max_timestamp)
 
+def GetParams(template, query_param):
+    if 'param' in template:
+        if template['param'][0] == '':
+            return
+        tmp_params = []
+        for i in range(min(len(query_param), len(template['param']))):
+            if query_param[i].find('=') < 0:
+                continue
+            new_values = query_param[i].split('=')[1].strip().split('/')
+            values = template['param'][i].split('=')[1].strip().split('/')
+            values = list(set(values + new_values))
+            tmp_params.append('{0}= {1}'.format(template['param'][i].split('=')[0], '/'.join(values)))
+        template['param'] = tmp_params
+    else:
+        template['param'] = query_param
 
 def Combine(input_dir, output_dir):
 
@@ -104,12 +121,12 @@ def Combine(input_dir, output_dir):
         print(x)
         with open(x, 'r') as f:
             reader = csv.reader(f)
-            queries, template = next(reader)
+            queries, template, param = next(reader)
             #statement = template.split(' ',1)[0]
             #if not statement in STATEMENTS:
             #    continue
-
-            templated_workload, min_timestamp, max_timestamp = AddEntry(template, reader,
+            param = [x.strip() for x in param.split(',')]
+            templated_workload, min_timestamp, max_timestamp = AddEntry(template, param, reader,
                     min_timestamp, max_timestamp, templated_workload)
 
         cnt += 1

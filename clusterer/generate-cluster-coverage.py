@@ -22,6 +22,8 @@ DATA_DICT = {
         'admission': "../clustering/timeseries/admissions/admission-combined-results-full/",
         'oli': "oli-combined-results/",
         'tiramisu': 'tiramisu-combined-csv/',
+        'crossfilter': 'template-result/crossfilter-combined-csv',
+        'crossfilter_0a66e5c6': 'template-result/crossfilter-combined-csv_0a66e5c6'
         }
 
 # Only looks at the csv files for the first 10 templates for testing purpose
@@ -44,7 +46,7 @@ FULL = True
 NOISE = False
 
 if FULL:
-    AGGREGATE = 10
+    AGGREGATE = 1
 else:
     AGGREGATE = 1
 
@@ -55,6 +57,7 @@ else:
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S" # Strip milliseconds ".%f"
 
+csv.field_size_limit(500 * 1024 * 1024)
 
 def LoadData(input_path):
     total_queries = dict()
@@ -69,7 +72,7 @@ def LoadData(input_path):
         print(csv_file)
         with open(input_path + "/" + csv_file, 'r') as f:
             reader = csv.reader(f)
-            queries, template = next(reader)
+            queries, template, param = next(reader)
 
             # To make the matplotlib work...
             template = template.replace('$', '')
@@ -209,6 +212,7 @@ def GenerateData(min_date, max_date, data, data_accu, templates, assignment_dict
     coverage = [ sum(l) / len(l) for l in coverage_lists]
 
     for c in online_clusters:
+        print(c)
         if (len(online_clusters[c]) < 2):
             continue
         l = online_clusters[c].keys()[0]
@@ -228,13 +232,13 @@ def GenerateData(min_date, max_date, data, data_accu, templates, assignment_dict
     return top_clusters, coverage
 
 def WriteResult(path, date, data):
-    with open(path, "a") as csvfile:
+    with open(path, "a", newline='') as csvfile:
         writer = csv.writer(csvfile, quoting = csv.QUOTE_ALL)
         writer.writerow([date, data])
 
 def Main(project, assignment_path, output_csv_dir, output_dir):
     with open(assignment_path, 'rb') as f:
-        num_clusters, assignment_dict, _ = pickle.load(f)
+        num_clusters, assignment_dict, _, _ = pickle.load(f)
 
     min_date, max_date, data, data_accu, total_queries, templates = LoadData(DATA_DICT[project])
 

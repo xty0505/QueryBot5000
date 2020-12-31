@@ -24,7 +24,7 @@ from sortedcontainers import SortedDict
 from sklearn.preprocessing import normalize
 from sklearn.neighbors import NearestNeighbors
 
-csv.field_size_limit(sys.maxsize)
+csv.field_size_limit(500 * 1024 * 1024)
 
 
 # Only looks at the csv files for the first 10 templates for testing purpose
@@ -36,7 +36,8 @@ USE_KNN = True
 KNN_ALG = "kd_tree"
 
 
-OUTPUT_DIR = 'online-clustering-results/'
+# OUTPUT_DIR = 'online-clustering-results/'
+OUTPUT_DIR = 'cluster-result/crossfilter_0a66e5c6/online-clustering-results/'
 STATEMENTS = ['select', 'SELECT', 'INSERT', 'insert', 'UPDATE', 'update', 'delete', 'DELETE']
 # "2016-10-31","17:50:21.344030"
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S" # Strip milliseconds ".%f"
@@ -45,6 +46,7 @@ DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S" # Strip milliseconds ".%f"
 def LoadData(input_path):
     total_queries = dict()
     templates = []
+    templates_idx = dict()
     min_date = datetime.max
     max_date = datetime.min
     data = dict()
@@ -54,7 +56,7 @@ def LoadData(input_path):
         print(csv_file)
         with open(input_path + "/" + csv_file, 'r') as f:
             reader = csv.reader(f)
-            queries, template = next(reader)
+            queries, template, param = next(reader)
 
             # To make the matplotlib work...
             template = template.replace('$', '')
@@ -69,6 +71,7 @@ def LoadData(input_path):
             #print queries
 
             templates.append(template)
+            templates_idx[template] = csv_file.split('.')[0][8:]
 
             # add template
             data[template] = SortedDict()
@@ -90,7 +93,7 @@ def LoadData(input_path):
 
     templates = sorted(templates)
 
-    return min_date, max_date, data, total_queries, templates
+    return min_date, max_date, data, total_queries, templates, templates_idx
 
 def Similarity(x, y, index):
     sumxx, sumxy, sumyy = 0, 0, 0
@@ -299,12 +302,12 @@ def AdjustCluster(min_date, current_date, next_date, data, last_ass, next_cluste
     return new_ass, next_cluster
 
 
-def OnlineClustering(min_date, max_date, data, total_queries, rho):
+def OnlineClustering(min_date, max_date, data, total_queries, rho, c_g):
     print(rho)
-    cluster_gap = 1440
+    cluster_gap = c_g
 
     n = (max_date - min_date).seconds // 60 + (max_date - min_date).days * 1440 + 1 
-    num_gaps = n // cluster_gap
+    num_gaps = int(n // cluster_gap)
 
     centers = dict()
     cluster_totals = dict()
@@ -342,19 +345,20 @@ if __name__ == '__main__':
     aparser.add_argument('--project', help='The name of the workload')
     aparser.add_argument('--rho', default=0.8, help='The threshold to determine'
         'whether a query template belongs to a cluster')
+    aparser.add_argument('--cluster-gap', dest='cluster_gap', help='The cluster gap, default is 1 day', default=1440)
     args = vars(aparser.parse_args())
 
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
 
-    min_date, max_date, data, total_queries, templates = LoadData(args['dir'])
+    min_date, max_date, data, total_queries, templates, templates_idx = LoadData(args['dir'])
 
     num_clusters, assignment_dict, cluster_totals = OnlineClustering(min_date, max_date, data,
-            total_queries, float(args['rho']))
+            total_queries, float(args['rho']), float(args['cluster_gap']))
 
     with open(OUTPUT_DIR + "{}-{}-assignments.pickle".format(args['project'], args['rho']),
             'wb') as f:  # Python 3: open(..., 'wb')
-        pickle.dump((num_clusters, assignment_dict, cluster_totals), f)
+        pickle.dump((num_clusters, assignment_dict, cluster_totals, templates_idx), f)
 
     print(num_clusters)
     print(cluster_totals)

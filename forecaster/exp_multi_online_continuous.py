@@ -114,13 +114,13 @@ class Args:
         # Prediction horizon size
         self.horizon = 60
         # The training start position
-        self.start_pos = 14400 
+        self.start_pos = 22
         # Update/Retrain the models every day
-        self.interval = 1440
+        self.interval = 1
 
         # Always use the past day arrival rates for the regression. Adjusted
         # according to the interval size.
-        self.regress_dim = {1: 1440, 5:288, 10: 144, 20:72, 30:48, 60:24, 120:12}
+        self.regress_dim = {1: 1, 5:288, 10: 144, 20:72, 30:48, 60:24, 120:12}
         # Auto regression order for the ARMA model
         self.ar_order = 6
         # Moving agerage order for the ARMA model
@@ -605,7 +605,7 @@ def Predict(args, config, top_cluster, trajs, method):
             first_date = datetime(2018, 1, 28, 0, 58)
         else:
             first_date = top_cluster[0][0]
-        train_delta_intervals = min(((date - first_date).days * 1440 + (date - first_date).seconds // 60
+        train_delta_intervals = min(((date - first_date).days * 1440 * 60 + (date - first_date).seconds // 60
             ) // (args.aggregate * args.interval), args.training_intervals)
         #print(train_delta_intervals)
         #print(date, first_date)
@@ -624,9 +624,11 @@ def Predict(args, config, top_cluster, trajs, method):
         #print(data)
         print(data.shape)
         #print(args.interval, args.horizon)
-        train_data = data[:-args.interval - args.horizon]
+        # train_data = data[:-args.interval - args.horizon]
+        train_data = data[:int(-len(data)*0.3)]
         print(train_data.shape)
-        test_data = data[-(args.paddling_intervals * args.interval + args.horizon + args.interval):]
+        # test_data = data[-(args.paddling_intervals * args.interval + args.horizon + args.interval):]
+        test_data = data[int(-len(data)*0.3):]
         print(test_data.shape)
 
         model = GetModel(args, train_data, method)
@@ -668,7 +670,7 @@ def Predict(args, config, top_cluster, trajs, method):
 
 
 def WriteResult(path, dates, actual, predict):
-    with open(path, "a") as csvfile:
+    with open(path, "a", encoding='utf-8', newline='') as csvfile:
         writer = csv.writer(csvfile, quoting = csv.QUOTE_ALL)
         for x in range(len(dates)):
             writer.writerow([dates[x], actual[x], predict[x]])
